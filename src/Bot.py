@@ -35,7 +35,7 @@ class Bot():
 
     #Descomente para escolher uma cor
     #botcolor = (255,0,0)  # BOT COLOR
-    name = "HEXA" # BOT NAME
+    name = "INF1771 Bot Example1" # BOT NAME
     host = "atari.icad.puc-rio.br" # SERVER
     port = 8888
 
@@ -335,8 +335,8 @@ class Bot():
     def timer1_Tick(self):
                 
         if self.client.connected:
-            if self.sayHello == 0:
-                self.sayHello = 1
+            if self.sayhello == 0:
+                self.sayhello = 1
                 self.client.sendName(self.name)
                 if hasattr(self, 'botcolor'):
                     self.client.sendRGB(self.botcolor[0],self.botcolor[1],self.botcolor[2]) 
@@ -396,7 +396,7 @@ class Bot():
         else:
             print("Disconnected")
             if running:
-                self.sayHello = 0
+                self.sayhello = 0
             
                 print("Connecting again...")
                 while(not self.client.connect(self.host, self.port)):
