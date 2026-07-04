@@ -311,6 +311,8 @@ class Bot():
             self.client.sendTurnLeft()
         elif decision == "andar":
             self.client.sendForward()
+        elif decision == "andar_re":
+            self.client.sendBackward()
         elif decision ==  "atacar":
             self.client.sendShoot()
         elif decision ==  "pegar_ouro":
