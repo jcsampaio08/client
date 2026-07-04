@@ -35,7 +35,7 @@ class Bot():
 
     #Descomente para escolher uma cor
     #botcolor = (255,0,0)  # BOT COLOR
-    name = "INF1771 Bot Example1" # BOT NAME
+    name = "Vem hexa" # BOT NAME
     host = "atari.icad.puc-rio.br" # SERVER
     port = 8888
 
@@ -58,6 +58,7 @@ class Bot():
     msgSeconds = 0
     gamestatus_interval = 0
     sayHello = 0
+    sayhello = 0
 
     # <summary>
     # Bot Constructor
@@ -107,7 +108,7 @@ class Bot():
                     if len(cmd) > 1:
                     
                         if cmd[1].strip() == "":
-                            self.gameAi.GetObservationsClean()
+                            self.gameAi.GetObservations([])
 
                         else:
                        
@@ -125,7 +126,7 @@ class Bot():
                             self.gameAi.GetObservations(o)
                         
                     else:
-                        self.gameAi.GetObservationsClean()
+                        self.gameAi.GetObservations([])
                     
                 ######################################################        
 
@@ -318,8 +319,6 @@ class Bot():
             self.client.sendGetItem()
         elif decision == "pegar_powerup":
             self.client.sendGetItem()
-        elif decision ==  "andar_re":
-            self.client.sendBackward()
     
     # <summary>
     # Execute some decision
@@ -395,7 +394,7 @@ class Bot():
 
         else:
             print("Disconnected")
-            if running:
+            if self.running:
                 self.sayhello = 0
             
                 print("Connecting again...")
