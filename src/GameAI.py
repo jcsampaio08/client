@@ -236,33 +236,29 @@ class GameAI():
                 item_step
             )
 
-        next_step = self._next_a_star_step()
-        if next_step is not None:
-            command = self._command_to_reach(next_step)
-            return self._commit(
-                command,
-                "explorando com A* ate fronteira segura %s" % (next_step,),
-                next_step
-            )
-
-        if self._should_scan_for_enemy():
-            scan = self._safe_spin()
-            return self._commit(
-                scan,
-                "sem caminho de exploracao; passos perto, procurando inimigo"
-            )
-
         if self._should_continue_forward():
             return self._commit(
                 "andar",
-                "sem plano A*; exploracao em linha reta com frente aceitavel",
+                "exploracao em linha reta; frente aceitavel e sem prioridade maior",
                 self._coord_ahead()
             )
 
-        return self._commit(
-            self._safe_spin(),
-            "sem caminho seguro conhecido; girando para observar"
-        )
+        next_step = self._next_a_star_step()
+        if next_step is None:
+            if self._should_scan_for_enemy():
+                scan = self._safe_spin()
+                return self._commit(
+                    scan,
+                    "sem caminho de exploracao; passos perto, procurando inimigo"
+                )
+
+            return self._commit(
+                self._safe_spin(),
+                "sem caminho seguro conhecido; girando para observar"
+            )
+
+        command = self._command_to_reach(next_step)
+        return self._commit(command, "explorando alvo seguro/fronteira %s" % (next_step,), next_step)
 
     def _process_observation(self, obs: str) -> None:
         if obs == "blocked":

@@ -18,10 +18,9 @@ A cada ciclo o bot atualiza o que sabe sobre as celulas observadas e escolhe uma
 3. Fugir usando marcha re ou giro seguro quando ha ameaca perto e energia baixa.
 4. Coletar item quando uma luz indica item na celula atual.
 5. Ir ate powerups/tesouros ja vistos quando existe caminho seguro conhecido.
-6. Explorar com A* ate a fronteira segura mais proxima.
+6. Explorar em linha reta ou com A* ate a fronteira segura mais proxima.
 7. Girar ao ouvir passos somente quando nao ha caminho de exploracao.
-8. Explorar em linha reta quando nao ha plano A*, mas a frente e aceitavel.
-9. Girar para observar quando nao ha caminho seguro conhecido.
+8. Girar para observar quando nao ha caminho seguro conhecido.
 
 Essa abordagem evita depender do mapa completo. O agente so usa posicao, direcao, energia e sensores recebidos do servidor.
 
