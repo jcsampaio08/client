@@ -18,152 +18,11 @@ __version__ = "1.0.0"
 __email__ = "abaffa@inf.puc-rio.br"
 #############################################################
 
-from dataclasses import dataclass
-from enum import Enum
-import heapq
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 
+from KnowledgeBase import Coord, KnowledgeBase
 from Map.Position import Position
-
-
-Coord = Tuple[int, int]
-
-
-class CellState(Enum):
-    """Knowledge states used by the path planner."""
-
-    UNKNOWN = "unknown"
-    SAFE = "safe"
-    VISITED = "visited"
-    BLOCKED = "blocked"
-    DEATH_RISK = "death_risk"
-    TELEPORT_RISK = "teleport_risk"
-
-
-@dataclass
-class CellInfo:
-    """Memory stored for each known map coordinate."""
-
-    state: CellState = CellState.UNKNOWN
-    visits: int = 0
-    breeze_evidence: int = 0
-    flash_evidence: int = 0
-    no_breeze_evidence: int = 0
-    no_flash_evidence: int = 0
-    item: Optional[str] = None
-    enemy_distance: Optional[int] = None
-    enemy_last_seen_turn: Optional[int] = None
-    steps_evidence: int = 0
-
-
-class KnowledgeBase:
-    """Graph-like memory for the hidden 59x34 board."""
-
-    WIDTH = 59
-    HEIGHT = 34
-
-    def __init__(self) -> None:
-        self.cells: Dict[Coord, CellInfo] = {}
-        self.item_cells: Dict[Coord, str] = {}
-        self.enemy_cells: Dict[Coord, Tuple[int, int]] = {}
-
-    def reset(self) -> None:
-        self.cells.clear()
-        self.item_cells.clear()
-        self.enemy_cells.clear()
-
-    def cell(self, coord: Coord) -> CellInfo:
-        if coord not in self.cells:
-            self.cells[coord] = CellInfo()
-        return self.cells[coord]
-
-    def in_bounds(self, coord: Coord) -> bool:
-        x, y = coord
-        return 0 <= x < self.WIDTH and 0 <= y < self.HEIGHT
-
-    def neighbors(self, coord: Coord) -> List[Coord]:
-        x, y = coord
-        candidates = [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
-        return [pos for pos in candidates if self.in_bounds(pos)]
-
-    def mark_visited(self, coord: Coord) -> None:
-        info = self.cell(coord)
-        info.state = CellState.VISITED
-        info.visits += 1
-
-    def mark_safe(self, coord: Coord) -> None:
-        info = self.cell(coord)
-        if info.state not in (CellState.VISITED, CellState.BLOCKED):
-            info.state = CellState.SAFE
-
-    def mark_blocked(self, coord: Coord) -> None:
-        info = self.cell(coord)
-        info.state = CellState.BLOCKED
-
-    def mark_death_risk(self, coord: Coord) -> None:
-        info = self.cell(coord)
-        if info.state in (CellState.UNKNOWN, CellState.TELEPORT_RISK):
-            info.state = CellState.DEATH_RISK
-        info.breeze_evidence += 1
-
-    def mark_teleport_risk(self, coord: Coord) -> None:
-        info = self.cell(coord)
-        if info.state == CellState.UNKNOWN:
-            info.state = CellState.TELEPORT_RISK
-        info.flash_evidence += 1
-
-    def mark_no_death_risk(self, coord: Coord) -> None:
-        info = self.cell(coord)
-        info.no_breeze_evidence += 1
-        if info.state == CellState.DEATH_RISK:
-            if info.flash_evidence > info.no_flash_evidence:
-                info.state = CellState.TELEPORT_RISK
-            else:
-                info.state = CellState.SAFE
-
-    def mark_no_teleport_risk(self, coord: Coord) -> None:
-        info = self.cell(coord)
-        info.no_flash_evidence += 1
-        if info.state == CellState.TELEPORT_RISK:
-            if info.breeze_evidence > info.no_breeze_evidence:
-                info.state = CellState.DEATH_RISK
-            else:
-                info.state = CellState.SAFE
-
-    def mark_item(self, coord: Coord, item: str) -> None:
-        info = self.cell(coord)
-        info.item = item
-        self.item_cells[coord] = item
-
-    def clear_item(self, coord: Coord) -> None:
-        info = self.cell(coord)
-        info.item = None
-        self.item_cells.pop(coord, None)
-
-    def mark_enemy(self, coord: Coord, distance: int, turn: int) -> None:
-        info = self.cell(coord)
-        info.enemy_distance = distance
-        info.enemy_last_seen_turn = turn
-        self.enemy_cells[coord] = (distance, turn)
-
-    def mark_steps_nearby(self, coord: Coord) -> None:
-        self.cell(coord).steps_evidence += 1
-
-    def is_safe_to_cross(self, coord: Coord) -> bool:
-        return self.cell(coord).state in (CellState.SAFE, CellState.VISITED)
-
-    def is_frontier_target(self, coord: Coord) -> bool:
-        return self.cell(coord).state == CellState.UNKNOWN
-
-    def is_blocked_or_deadly(self, coord: Coord) -> bool:
-        return self.cell(coord).state in (
-            CellState.BLOCKED,
-            CellState.DEATH_RISK,
-            CellState.TELEPORT_RISK,
-        )
-
-    def visit_count(self, coord: Coord) -> int:
-        return self.cell(coord).visits
+from PathPlanner import PathPlanner
 
 
 class GameAI():
@@ -208,6 +67,7 @@ class GameAI():
         self.energy = 0
 
         self.kb = KnowledgeBase()
+        self.path_planner = PathPlanner(self.kb)
         self.current_observations: Set[str] = set()
         self.enemy_distance: Optional[int] = None
         self.current_item: Optional[str] = None
@@ -219,14 +79,14 @@ class GameAI():
         self.last_damage_action: Optional[int] = None
         self.last_hit_action: Optional[int] = None
         self.follow_up_shots = 0
-        self.max_follow_up_shots = 2
+        self.max_follow_up_shots = 4
 
         self.last_decision = ""
         self.last_reason = ""
         self.last_target: Optional[Coord] = None
         self.awaiting_observation = False
         self.awaiting_ticks = 0
-        self.max_awaiting_ticks = 5
+        self.max_awaiting_ticks = 2
         self.action_counter = 0
         self.last_observation_counter = 0
         self.turn_streak = 0
@@ -252,7 +112,8 @@ class GameAI():
             self.awaiting_observation = False
             self.awaiting_ticks = 0
         elif previous_state == "game" and next_state == "game":
-            if self._heuristic(previous_coord, self._current_coord()) > 1:
+            current_coord = self._current_coord()
+            if self.path_planner.heuristic(previous_coord, current_coord) > 1:
                 self.planned_path = []
                 self.recent_positions = []
 
@@ -369,26 +230,39 @@ class GameAI():
             command = self._command_to_reach(item_step)
             return self._commit(
                 command,
-                "indo ate item conhecido em %s" % (self._best_item_target(),),
+                "indo ate item conhecido em %s" % (
+                    self.path_planner.best_item_target(self._current_coord(), self.energy),
+                ),
                 item_step
             )
 
-        if self.heard_steps and self.turn_streak < len(self.DIRECTIONS):
+        next_step = self._next_a_star_step()
+        if next_step is not None:
+            command = self._command_to_reach(next_step)
+            return self._commit(
+                command,
+                "explorando com A* ate fronteira segura %s" % (next_step,),
+                next_step
+            )
+
+        if self._should_scan_for_enemy():
             scan = self._safe_spin()
             return self._commit(
                 scan,
-                "passos detectados perto; girando para procurar inimigo na mira"
+                "sem caminho de exploracao; passos perto, procurando inimigo"
             )
 
-        next_step = self._next_a_star_step()
-        if next_step is None:
+        if self._should_continue_forward():
             return self._commit(
-                self._safe_spin(),
-                "sem caminho seguro conhecido; girando para observar"
+                "andar",
+                "sem plano A*; exploracao em linha reta com frente aceitavel",
+                self._coord_ahead()
             )
 
-        command = self._command_to_reach(next_step)
-        return self._commit(command, "explorando alvo seguro/fronteira %s" % (next_step,), next_step)
+        return self._commit(
+            self._safe_spin(),
+            "sem caminho seguro conhecido; girando para observar"
+        )
 
     def _process_observation(self, obs: str) -> None:
         if obs == "blocked":
@@ -501,6 +375,17 @@ class GameAI():
             return False
         return self._recent_hit_memory()
 
+    def _should_scan_for_enemy(self) -> bool:
+        if not self.heard_steps:
+            return False
+        if self.turn_streak >= len(self.DIRECTIONS):
+            return False
+        if self.energy <= 25:
+            return False
+        if self._has_usable_planned_step():
+            return False
+        return self._current_collectible_item() != "powerup"
+
     def _should_escape(self) -> bool:
         if self.enemy_distance is not None and self.energy > 10:
             return False
@@ -528,6 +413,28 @@ class GameAI():
             return "andar"
 
         return self._safe_spin()
+
+    def _has_usable_planned_step(self) -> bool:
+        next_step, _ = self.path_planner.next_step_from_existing_path(
+            self._current_coord(),
+            self.planned_path
+        )
+        return (
+            next_step is not None and
+            self.path_planner.is_legal_step_target(next_step)
+        )
+
+    def _should_continue_forward(self) -> bool:
+        forward = self._coord_ahead()
+        if not self.path_planner.is_legal_step_target(forward):
+            return False
+        if self.kb.is_blocked_or_deadly(forward):
+            return False
+        if self.turn_streak > 0:
+            return False
+        if len(self.recent_positions) >= 2 and forward == self.recent_positions[-2]:
+            return False
+        return True
 
     def _collect_command(self) -> str:
         item = self._current_collectible_item()
@@ -557,179 +464,25 @@ class GameAI():
             self.kb.mark_enemy(enemy_pos, self.enemy_distance, self.action_counter)
 
     def _next_item_step(self) -> Optional[Coord]:
-        target = self._best_item_target()
-        if target is None:
-            return None
-
-        path = self._a_star(self._current_coord(), target)
-        if len(path) >= 2:
-            self.planned_path = path
-            return path[1]
-        return None
-
-    def _best_item_target(self) -> Optional[Coord]:
-        current = self._current_coord()
-        candidates: List[Tuple[int, int, Coord]] = []
-
-        for coord, item in self.kb.item_cells.items():
-            if item == "poison":
-                continue
-            if not self.kb.is_safe_to_cross(coord):
-                continue
-
-            priority = 0
-            if self.energy <= 60 and item == "powerup":
-                priority = -50
-            elif item == "powerup":
-                priority = -10
-            elif item == "treasure":
-                priority = -5
-
-            candidates.append((priority + self._heuristic(current, coord), priority, coord))
-
-        if not candidates:
-            return None
-        candidates.sort()
-        return candidates[0][2]
+        next_step, _, path = self.path_planner.next_item_step(
+            self._current_coord(),
+            self.dir,
+            self.energy,
+            self.recent_positions,
+            self.planned_path
+        )
+        self.planned_path = path
+        return next_step
 
     def _next_a_star_step(self) -> Optional[Coord]:
-        current = self._current_coord()
-        if len(self.planned_path) >= 2 and self.planned_path[0] == current:
-            next_step = self.planned_path[1]
-            if self._is_legal_step_target(next_step) and not self._is_bad_loop_step(next_step):
-                return next_step
-
-        best_path: List[Coord] = []
-        for target in self._frontier_targets():
-            path = self._a_star(current, target)
-            if len(path) < 2:
-                continue
-            if self._is_bad_loop_step(path[1]) and self._has_non_loop_adjacent_option():
-                continue
-            if not best_path or self._path_rank(path) < self._path_rank(best_path):
-                best_path = path
-
-        self.planned_path = best_path
-        if len(best_path) >= 2:
-            return best_path[1]
-        return None
-
-    def _frontier_targets(self) -> List[Coord]:
-        targets: Set[Coord] = set()
-        known_safe = [
-            coord for coord, info in self.kb.cells.items()
-            if info.state in (CellState.SAFE, CellState.VISITED)
-        ]
-
-        for coord in known_safe:
-            for neighbor in self.kb.neighbors(coord):
-                if self.kb.is_frontier_target(neighbor):
-                    targets.add(neighbor)
-
-        return list(targets)
-
-    def _a_star(self, start: Coord, target: Coord) -> List[Coord]:
-        open_heap: List[Tuple[int, int, Coord]] = []
-        heapq.heappush(open_heap, (self._heuristic(start, target), 0, start))
-
-        came_from: Dict[Coord, Coord] = {}
-        g_score: Dict[Coord, int] = {start: 0}
-        closed: Set[Coord] = set()
-
-        while open_heap:
-            _, current_cost, current = heapq.heappop(open_heap)
-            if current in closed:
-                continue
-            if current == target:
-                return self._reconstruct_path(came_from, current)
-
-            closed.add(current)
-            for neighbor in self.kb.neighbors(current):
-                if not self._can_a_star_enter(neighbor, target):
-                    continue
-
-                tentative = current_cost + self._step_cost(neighbor)
-                if tentative >= g_score.get(neighbor, 10**9):
-                    continue
-
-                came_from[neighbor] = current
-                g_score[neighbor] = tentative
-                priority = tentative + self._heuristic(neighbor, target)
-                heapq.heappush(open_heap, (priority, tentative, neighbor))
-
-        return []
-
-    def _can_a_star_enter(self, coord: Coord, target: Coord) -> bool:
-        if coord == target:
-            return (
-                self.kb.is_frontier_target(coord) or
-                self.kb.is_safe_to_cross(coord)
-            )
-        return self.kb.is_safe_to_cross(coord)
-
-    def _is_legal_step_target(self, coord: Coord) -> bool:
-        return self.kb.is_safe_to_cross(coord) or self.kb.is_frontier_target(coord)
-
-    def _step_cost(self, coord: Coord) -> int:
-        return (
-            1 +
-            min(self.kb.visit_count(coord), 5) +
-            self._recent_position_penalty(coord) +
-            self._enemy_pressure_penalty(coord)
+        next_step, path = self.path_planner.next_exploration_step(
+            self._current_coord(),
+            self.dir,
+            self.recent_positions,
+            self.planned_path
         )
-
-    def _path_rank(self, path: List[Coord]) -> Tuple[int, int, int, int, int]:
-        return (
-            len(path),
-            self._turn_cost_to(path[1]) if len(path) > 1 else 0,
-            self._recent_position_penalty(path[1]) if len(path) > 1 else 0,
-            self._enemy_pressure_penalty(path[1]) if len(path) > 1 else 0,
-            sum(self.kb.visit_count(coord) for coord in path),
-        )
-
-    def _enemy_pressure_penalty(self, coord: Coord) -> int:
-        return min(self.kb.cell(coord).steps_evidence, 3) * 4
-
-    def _recent_position_penalty(self, coord: Coord) -> int:
-        if coord not in self.recent_positions:
-            return 0
-        age = len(self.recent_positions) - self.recent_positions.index(coord)
-        return age * 10
-
-    def _is_bad_loop_step(self, coord: Coord) -> bool:
-        if len(self.recent_positions) < 2:
-            return False
-        return coord == self.recent_positions[-2]
-
-    def _has_non_loop_adjacent_option(self) -> bool:
-        current = self._current_coord()
-        for coord in self.kb.neighbors(current):
-            if self._is_bad_loop_step(coord):
-                continue
-            if self._is_legal_step_target(coord):
-                return True
-        return False
-
-    def _heuristic(self, a: Coord, b: Coord) -> int:
-        return abs(a[0] - b[0]) + abs(a[1] - b[1])
-
-    def _turn_cost_to(self, target: Coord) -> int:
-        desired_dir = self._direction_to(target)
-        if desired_dir is None:
-            return 99
-
-        current_idx = self.DIRECTIONS.index(self.dir)
-        target_idx = self.DIRECTIONS.index(desired_dir)
-        diff = abs(target_idx - current_idx)
-        return min(diff, len(self.DIRECTIONS) - diff)
-
-    def _reconstruct_path(self, came_from: Dict[Coord, Coord], current: Coord) -> List[Coord]:
-        path = [current]
-        while current in came_from:
-            current = came_from[current]
-            path.append(current)
-        path.reverse()
-        return path
+        self.planned_path = path
+        return next_step
 
     def _command_to_reach(self, target: Coord) -> str:
         forward = self._coord_ahead()
