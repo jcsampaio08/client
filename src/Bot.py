@@ -35,7 +35,7 @@ class Bot():
 
     #Descomente para escolher uma cor
     botcolor = (255, 255, 0)  # BOT COLOR
-    name = "Vem hexa" # BOT NAME
+    name = "Botzão" # BOT NAME
     host = "atari.icad.puc-rio.br" # SERVER
     port = 8888
 
